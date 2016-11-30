@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-type TimeWheelCallback func([]interface{})
+type TimeWheelCallback func([]*BucketItem)
 
 type TimeWheel struct {
 	interval       time.Duration
@@ -19,8 +19,13 @@ type TimeWheel struct {
 }
 
 type BucketItem struct {
-	interval time.Duration
-	value    interface{}
+	interval   time.Duration
+	value      interface{}
+	IsCanceled bool
+}
+
+func (b *BucketItem) Value() interface{} {
+	return b.value
 }
 
 func NewTimeWhell(interval time.Duration, bucketCount int, callbackFunc TimeWheelCallback) *TimeWheel {
@@ -66,16 +71,18 @@ func (timeWheel *TimeWheel) run() {
 		case <-timeWheel.ticker.C:
 			if nil != timeWheel.callback {
 				buckets := timeWheel.buckets.Value.(*list.List)
-				userDatas := make([]interface{}, 0, buckets.Len())
+				userDatas := make([]*BucketItem, 0, buckets.Len())
 
 				var n *list.Element
 				for v := buckets.Front(); v != nil; v = n {
 					if bucketItem := v.Value.(*BucketItem); nil != bucketItem {
-						insertBucket := timeWheel.buckets.Move(int(bucketItem.interval.Nanoseconds()) / int(timeWheel.interval))
-						itemList, _ := insertBucket.Value.(*list.List)
-						itemList.PushBack(bucketItem)
+						if !bucketItem.IsCanceled {
+							insertBucket := timeWheel.buckets.Move(int(bucketItem.interval.Nanoseconds()) / int(timeWheel.interval))
+							itemList, _ := insertBucket.Value.(*list.List)
+							itemList.PushBack(bucketItem)
 
-						userDatas = append(userDatas, bucketItem.value)
+							userDatas = append(userDatas, bucketItem)
+						}
 
 						n = v.Next()
 						buckets.Remove(v)
